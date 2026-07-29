@@ -33,3 +33,19 @@ export function toolSelectionScore(
   if (precision + recall === 0) return 0;
   return (2 * precision * recall) / (precision + recall);
 }
+
+/**
+ * Evaluator: CHeck if tools were called in expected order.
+ * Returns the fraction of expexted tools found in sequence.
+ * Order matters but tools dont need to be consecutive.
+ */
+export function toolsAvoided(
+  output: SingleTurnResult | MultiTurnResult,
+  target: EvalTarget | MultiTurnTarget,
+): number {
+  if (!target.forbiddenTools?.length) return 1;
+  const selected = new Set(
+    "toolNames" in output ? output.toolNames : output.toolsUsed,
+  );
+  return target.forbiddenTools.some((t) => selected.has(t)) ? 0 : 1;
+}
