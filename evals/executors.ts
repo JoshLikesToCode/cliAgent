@@ -5,11 +5,18 @@ import type {
   MultiTurnResult,
 } from "./types.ts";
 
-import { generateText, stepCountIs, tool, type ToolSet } from "ai";
+import {
+  generateText,
+  stepCountIs,
+  tool,
+  type ModelMessage,
+  type ToolSet,
+} from "ai";
 
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
-import { buildMessages } from "./utils.ts";
+import { buildMessages, buildMockedTools } from "./utils.ts";
+import { SYSTEM_PROMPT } from "../dist/agent/system/prompt.js";
 
 // Mocked out tool definitions for our evals
 const TOOL_DEFINITIONS: any = {
@@ -92,5 +99,59 @@ export const singleTurnExecutor = async (data: EvalData) => {
     toolCalls,
     toolNames,
     selectedAny: toolNames.length > 0,
+  };
+};
+
+/**
+ * Multi-turn executor with mocked tools.
+ * Runs a complete agent loop with tools returning fixed values.
+ */
+export const multiTurnWithMocks = async (data: MultiTurnEvalData) => {
+  const tools = buildMockedTools(data.mockTools);
+  const messages: ModelMessage[] = data.messages ?? [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: data.prompt ?? "" },
+  ];
+
+  const res = await generateText({
+    model: openai(data.config?.model ?? "gpt-5-mini"),
+    messages: messages,
+    tools,
+    stopWhen: stepCountIs(data.config?.maxSteps ?? 20),
+  });
+
+  const allTools: string[] = [];
+  const steps = res.steps.map((step) => {
+    const stepToolCalls = (step.toolCalls ?? []).map((tc) => {
+      allTools.push(tc.toolName);
+      return {
+        toolName: tc.toolName,
+        args: "args" in tc ? tc.args : {},
+      };
+    });
+
+    const toolsUsed = [new Set(allTools)];
+
+    const stepToolResults = (step.staticToolResults ?? []).map((tr) => {
+      return {
+        toolName: tr.toolName,
+        result: "results" in tr ? tr.results : tr,
+      };
+    });
+
+    return {
+      toolCalls: stepToolCalls.length > 0 ? stepToolCalls : undefined,
+      toolResults: stepToolResults.length > 0 ? stepToolResults : undefined,
+      text: step.text || undefined,
+    };
+  });
+
+  const toolsUsed = [new Set(allTools)];
+
+  return {
+    text: res.text,
+    steps,
+    toolsUsed,
+    toolCallOrder: allTools,
   };
 };
