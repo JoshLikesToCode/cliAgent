@@ -42,3 +42,54 @@ export const writeFile = tool({
     }
   },
 });
+
+export const listFiles = tool({
+  name: "listFiles",
+  description:
+    "List all files in a directory at the specified given path. It will return an array of file names.",
+  inputSchema: z.object({
+    directoryPath: z
+      .string()
+      .describe("The path to the directory to list files in.")
+      .default("."),
+  }),
+  execute: async ({ directoryPath }) => {
+    try {
+      const absolutePath = nodePath.resolve(directoryPath);
+      const files = await fs.readdir(absolutePath, { withFileTypes: true });
+      const items = files.map((entry) => ({
+        name: entry.name,
+        isFile: entry.isFile(),
+        isDirectory: entry.isDirectory(),
+        type: entry.isFile()
+          ? "file"
+          : entry.isDirectory()
+            ? "directory"
+            : "other",
+      }));
+      return items.length > 0
+        ? items
+        : `No files found in the directory at path: ${absolutePath}`;
+    } catch (error) {
+      return `There was an error listing the files, here is the native error from node.js: ${error}`;
+    }
+  },
+});
+
+export const deleteFile = tool({
+  name: "deleteFile",
+  description:
+    "Delete a file at the specified given path. It will return a success message if the file was deleted. Use with caution as this is very destructive and will permanently delete the file.",
+  inputSchema: z.object({
+    filePath: z.string().describe("The path to the file to delete."),
+  }),
+  execute: async ({ filePath }) => {
+    try {
+      const absolutePath = nodePath.resolve(filePath);
+      await fs.unlink(absolutePath);
+      return `Successfully deleted the file at path: ${absolutePath}`;
+    } catch (error) {
+      return `There was an error deleting the file, here is the native error from node.js: ${error}`;
+    }
+  },
+});
