@@ -6,22 +6,39 @@ import { tools } from "./tools/index.ts";
 import { SYSTEM_PROMPT } from "./system/prompt.ts";
 import type { AgentCallbacks, ToolCallInfo } from "../types.ts";
 import { filterCompatibleMessages } from "./system/filterMessages.ts";
+import {
+  estimateMessagesTokens,
+  getModelLimits,
+  isOverThreshold,
+  calculateUsagePercentage,
+  compactConversation,
+  DEFAULT_THRESHOLD,
+} from "./context/index.ts";
 
 const MODEL_NAME = "gpt-5-mini";
 
 export const runAgent = async (
   userMessage: string,
   conversationHistory: ModelMessage[],
-  callBaclks: AgentCallbacks,
+  callbacks: AgentCallbacks,
 ): Promise<ModelMessage[]> => {
+  // get model limits we copied verbatim from OpenAI website
+  const modelLimits = getModelLimits(MODEL_NAME);
+
   // this conversation history comes from the ui,
   // and will need to be filtered first
   const workingHistory = filterCompatibleMessages(conversationHistory);
-  const messages: ModelMessage[] = [
+  let messages: ModelMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     ...workingHistory,
     { role: "user", content: userMessage },
   ];
+
+  const precheckTokens = estimateMessagesTokens(messages);
+  // compact if we need to
+  if (isOverThreshold(precheckTokens.total, modelLimits.contextWindow)) {
+    messages = await compactConversation(workingHistory, MODEL_NAME);
+  }
 
   let fullResponse = "";
 
@@ -36,6 +53,25 @@ export const runAgent = async (
       },
     });
 
+    // call this function after any signifigant change to messages,
+    // so the ui can update token usage
+    const reportTokenUsage = () => {
+      if (callbacks.onTokenUsage) {
+        const usage = estimateMessagesTokens(messages);
+        callbacks.onTokenUsage({
+          inputTokens: usage.input,
+          outputTokens: usage.output,
+          totalTokens: usage.total,
+          contextWindow: modelLimits.contextWindow,
+          threshold: DEFAULT_THRESHOLD,
+          percentage: calculateUsagePercentage(
+            usage.total,
+            modelLimits.contextWindow,
+          ),
+        });
+      }
+    };
+
     // track tool calls
     const toolCalls: ToolCallInfo[] = [];
     let currText = "";
@@ -46,7 +82,7 @@ export const runAgent = async (
         if (chunk.type === "text-delta") {
           currText += chunk.text;
           // stream to ui
-          callBaclks.onToken(chunk.text);
+          callbacks.onToken(chunk.text);
         }
         if (chunk.type === "tool-call") {
           const input = "input" in chunk ? chunk.input : {};
@@ -56,7 +92,7 @@ export const runAgent = async (
             args: input as any,
           });
           // streams to ui
-          callBaclks.onToolCallStart(chunk.toolName, input);
+          callbacks.onToolCallStart(chunk.toolName, input);
         }
         if (chunk.type === "tool-result") {
           // tools auto-execute (they define `execute`); this is the real result
@@ -65,7 +101,7 @@ export const runAgent = async (
             output && typeof output === "object" && "value" in output
               ? (output as any).value
               : output;
-          callBaclks.onToolCallEnd(chunk.toolName, String(value));
+          callbacks.onToolCallEnd(chunk.toolName, String(value));
         }
       }
     } catch (e) {
@@ -81,7 +117,7 @@ export const runAgent = async (
     // error, break the agent loop
     if (streamError && !currText) {
       fullResponse = "Sorry about that, we got an error somewhere in the chain";
-      callBaclks.onToken(fullResponse);
+      callbacks.onToken(fullResponse);
       break;
     }
 
@@ -91,6 +127,7 @@ export const runAgent = async (
     // tool results are already included by streamText (tools auto-execute)
     const responseMessages = await res.response;
     messages.push(...responseMessages.messages);
+    reportTokenUsage();
 
     // done
     if (finishReason !== "tool-calls" || toolCalls.length === 0) {
@@ -98,7 +135,7 @@ export const runAgent = async (
     }
   }
   // update ui
-  callBaclks.onComplete(fullResponse);
+  callbacks.onComplete(fullResponse);
   return messages;
 };
 
