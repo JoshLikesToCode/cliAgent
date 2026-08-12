@@ -3,6 +3,7 @@ import { streamText, type ModelMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { Laminar, getTracer, observe } from "@lmnr-ai/lmnr";
 import { tools } from "./tools/index.ts";
+import { withApproval } from "./tools/approval.ts";
 import { SYSTEM_PROMPT } from "./system/prompt.ts";
 import type { AgentCallbacks, ToolCallInfo } from "../types.ts";
 import { filterCompatibleMessages } from "./system/filterMessages.ts";
@@ -42,11 +43,19 @@ export const runAgent = async (
 
   let fullResponse = "";
 
+  // deleting files and running code/shell commands are irreversible or can
+  // touch the host, so gate them behind user approval
+  const gatedTools = withApproval(
+    tools,
+    ["deleteFile", "runCmd", "runCode"],
+    callbacks.onToolApproval,
+  );
+
   while (true) {
     const res = streamText({
       model: openai(MODEL_NAME),
       messages,
-      tools,
+      tools: gatedTools,
       experimental_telemetry: {
         isEnabled: true,
         tracer: getTracer(),
