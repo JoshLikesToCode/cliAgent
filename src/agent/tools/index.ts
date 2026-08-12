@@ -1,6 +1,8 @@
 import { dateTime } from "./dateTime.ts";
 import { readFile, writeFile, listFiles, deleteFile } from "./file.ts";
 import { webSearch } from "./webSearch.ts";
+import { runCmd } from "./shell.ts";
+import { runCode } from "./codeSandbox.ts";
 
 // All tools combined for the agent
 export const tools = {
@@ -10,14 +12,23 @@ export const tools = {
   listFiles,
   deleteFile,
   webSearch,
+  runCmd,
+  runCode,
 };
 
 export { readFile, writeFile, listFiles, deleteFile } from "./file.ts";
 export { webSearch } from "./webSearch.ts";
+export { runCmd } from "./shell.ts";
+export { runCode } from "./codeSandbox.ts";
+export { runInSandbox, type SandboxApi, type SandboxResult } from "./sandbox.ts";
 
 export const fileTools = {
   readFile,
   writeFile,
   listFiles,
   deleteFile,
+};
+
+export const terminalTools = {
+  runCmd,
 };
