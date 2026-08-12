@@ -1,35 +1,14 @@
-import React, { useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import React from 'react';
+import { Box, Text } from 'ink';
 
 interface InputProps {
-  onSubmit: (value: string) => void;
+  value: string;
   disabled?: boolean;
 }
 
-export function Input({ onSubmit, disabled = false }: InputProps) {
-  const [value, setValue] = useState('');
-
-  useInput((input, key) => {
-    if (disabled) return;
-
-    if (key.return) {
-      if (value.trim()) {
-        onSubmit(value);
-        setValue('');
-      }
-      return;
-    }
-
-    if (key.backspace || key.delete) {
-      setValue((prev) => prev.slice(0, -1));
-      return;
-    }
-
-    if (input && !key.ctrl && !key.meta) {
-      setValue((prev) => prev + input);
-    }
-  });
-
+// Purely presentational: keystrokes are handled by the single top-level
+// useInput in App, so this never mounts/unmounts its own stdin listener.
+export function Input({ value, disabled = false }: InputProps) {
   return (
     <Box>
       <Text color="blue" bold>

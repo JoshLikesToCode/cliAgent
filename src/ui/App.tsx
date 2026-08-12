@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { Box, Text, useApp } from "ink";
+import { Box, Text, useApp, useInput } from "ink";
 import type { ModelMessage } from "ai";
 import { runAgent } from "../agent/run.ts";
 import { MessageList, type Message } from "./components/MessageList.tsx";
@@ -25,7 +25,9 @@ export function App() {
   const [activeToolCalls, setActiveToolCalls] = useState<ActiveToolCall[]>([]);
   const [pendingApproval, setPendingApproval] =
     useState<ToolApprovalRequest | null>(null);
+  const [approvalSelectedIndex, setApprovalSelectedIndex] = useState(0);
   const [tokenUsage, setTokenUsage] = useState<TokenUsageInfo | null>(null);
+  const [inputValue, setInputValue] = useState("");
 
   const handleSubmit = useCallback(
     async (userInput: string) => {
@@ -102,6 +104,55 @@ export function App() {
     [conversationHistory, exit],
   );
 
+  const resolveApproval = useCallback(
+    (approved: boolean) => {
+      setPendingApproval((current) => {
+        current?.resolve(approved);
+        return null;
+      });
+      setApprovalSelectedIndex(0);
+    },
+    [],
+  );
+
+  // Single top-level input listener for the whole app. Keeping raw-mode
+  // stdin handling in one place (rather than mounting/unmounting a useInput
+  // per component as focus moves between the text input and the approval
+  // prompt) avoids the stdin listener churn that was causing keystrokes
+  // (like the Enter that approves a tool call) to get dropped.
+  useInput((input, key) => {
+    if (pendingApproval) {
+      if (key.leftArrow || key.rightArrow) {
+        setApprovalSelectedIndex((prev) => (prev === 0 ? 1 : 0));
+        return;
+      }
+      if (key.return) {
+        resolveApproval(approvalSelectedIndex === 0);
+      }
+      return;
+    }
+
+    if (isLoading) return;
+
+    if (key.return) {
+      if (inputValue.trim()) {
+        const value = inputValue;
+        setInputValue("");
+        handleSubmit(value);
+      }
+      return;
+    }
+
+    if (key.backspace || key.delete) {
+      setInputValue((prev) => prev.slice(0, -1));
+      return;
+    }
+
+    if (input && !key.ctrl && !key.meta) {
+      setInputValue((prev) => prev + input);
+    }
+  });
+
   return (
     <Box flexDirection="column" padding={1}>
       <Box marginBottom={1}>
@@ -150,16 +201,13 @@ export function App() {
           <ToolApproval
             toolName={pendingApproval.toolName}
             args={pendingApproval.args}
-            onResolve={(approved) => {
-              pendingApproval.resolve(approved);
-              setPendingApproval(null);
-            }}
+            selectedIndex={approvalSelectedIndex}
           />
         )}
       </Box>
 
       {!pendingApproval && (
-        <Input onSubmit={handleSubmit} disabled={isLoading} />
+        <Input value={inputValue} disabled={isLoading} />
       )}
 
       <TokenUsage usage={tokenUsage} />

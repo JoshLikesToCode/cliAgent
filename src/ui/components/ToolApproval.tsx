@@ -1,13 +1,14 @@
-import React, { useState } from "react";
-import { Box, Text, useInput } from "ink";
+import React from "react";
+import { Box, Text } from "ink";
 
 interface ToolApprovalProps {
   toolName: string;
   args: unknown;
-  onResolve: (approved: boolean) => void;
+  selectedIndex: number;
 }
 
 const MAX_PREVIEW_LINES = 5;
+export const APPROVAL_OPTIONS = ["Yes", "No"] as const;
 
 function formatArgs(args: unknown): { preview: string; extraLines: number } {
   const formatted = JSON.stringify(args, null, 2);
@@ -54,24 +55,10 @@ function getArgsSummary(args: unknown): string {
   return "";
 }
 
-export function ToolApproval({ toolName, args, onResolve }: ToolApprovalProps) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const options = ["Yes", "No"];
-
-  useInput(
-    (input, key) => {
-      if (key.upArrow || key.downArrow) {
-        setSelectedIndex((prev) => (prev === 0 ? 1 : 0));
-        return;
-      }
-
-      if (key.return) {
-        onResolve(selectedIndex === 0);
-      }
-    },
-    { isActive: true }
-  );
-
+// Purely presentational: selection + submission are driven by the single
+// top-level useInput in App, so this never mounts/unmounts its own stdin
+// listener (that churn was causing the double-Enter issue).
+export function ToolApproval({ toolName, args, selectedIndex }: ToolApprovalProps) {
   const argsSummary = getArgsSummary(args);
   const { preview, extraLines } = formatArgs(args);
 
@@ -95,7 +82,7 @@ export function ToolApproval({ toolName, args, onResolve }: ToolApprovalProps) {
         </Box>
       </Box>
       <Box marginTop={1} marginLeft={2} flexDirection="row" gap={2}>
-        {options.map((option, index) => (
+        {APPROVAL_OPTIONS.map((option, index) => (
           <Text
             key={option}
             color={selectedIndex === index ? "green" : "gray"}
